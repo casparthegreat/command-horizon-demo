@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Command Horizon – Python Demo</title>
+
+  <!-- PyScript CDN -->
+  <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+  <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+
+  <style>
+    body {
+      background: #050814;
+      color: #e0f0ff;
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      padding: 12px 16px;
+      background: linear-gradient(90deg, #071b3a, #0b305f);
+      border-bottom: 1px solid #1a3a6a;
+    }
+    h1 {
+      margin: 0;
+      font-size: 20px;
+    }
+    #game-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    #controls {
+      width: 260px;
+      border-right: 1px solid #1a3a6a;
+      padding: 12px;
+      box-sizing: border-box;
+      background: #060b18;
+    }
+    #controls button {
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 8px;
+      border: none;
+      background: #174a9c;
+      color: #e0f0ff;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    #controls button:hover {
+      background: #1f63cf;
+    }
+    #log {
+      flex: 1;
+      padding: 12px;
+      box-sizing: border-box;
+      background: #050814;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 13px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      border-left: 1px solid #1a3a6a;
+    }
+    #status {
+      font-size: 12px;
+      color: #9bb7ff;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>COMMAND HORIZON – Python Browser Demo</h1>
+  </header>
+
+  <div id="game-container">
+    <div id="controls">
+      <div id="status">Kommandant bereit.</div>
+      <button id="btn-scan">Scan‑Ping</button>
+      <button id="btn-orbit">Drohnen in Orbit</button>
+      <button id="btn-move">Truppen bewegen</button>
+      <button id="btn-orbital">Orbitalangriff</button>
+      <button id="btn-tick">Nächster Zug (Tick)</button>
+      <button id="btn-reset">Neustart</button>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <py-script>
+from dataclasses import dataclass, field
+from typing import List, Tuple
+import math
+
+# --- Hilfsfunktionen ---
+
+Vec2 = Tuple[float, float]
+
+def distance(a: Vec2, b: Vec2) -> float:
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+# --- Game-Klassen ---
+
+@dataclass
+class Unit:
+    name: str
+    position: Vec2
+    hp: int = 100
+    is_enemy: bool = False
+
+    def move_to(self, target: Vec2, log):
+        log(f"[{self.name}] bewegt sich zu {target}")
+        self.position = target
+
+    def take_damage(self, amount: int, log):
+        self.hp -= amount
+        log(f"[{self.name}] erleidet {amount} Schaden (HP: {self.hp})")
+        if self.hp <= 0:
+            log(f"[{self.name}] wurde zerstört.")
+
+
+@dataclass
+class Drone(Unit):
+    def orbit(self, center: Vec2, radius: float, angle_deg: float, log):
+        rad = math.radians(angle_deg)
+        x = center[0] + math.cos(rad) * radius
+        y = center[1] + math.sin(rad) * radius
+        log(f"[{self.name}] geht in Orbit‑Position bei ({x:.1f}, {y:.1f})")
+        self.position = (x, y)
+
+
+@dataclass
+class Commander:
+    name: str
+    position: Vec2
+    units: List[Unit] = field(default_factory=list)
+    drones: List[Drone] = field(default_factory=list)
+    orbital_cooldown: int = 0
+
+    def select_units_in_radius(self, center: Vec2, radius: float, log):
+        selected = [u for u in self.units if distance(u.position, center) <= radius]
+        log(f"[{self.name}] selektiert {len(selected)} Einheiten im Radius {radius}")
+        return selected
+
+    def move_group(self, group: List[Unit], target: Vec2, log):
+        log(f"[{self.name}] gibt Bewegungsbefehl nach {target}")
+        for u in group:
+            u.move_to(target, log)
+
+    def scan_ping(self, enemies: List[Unit], center: Vec2, radius: float, log):
+        log(f"[{self.name}] führt Scan‑Ping bei {center} (R={radius}) aus")
+        detected = [e for e in enemies if distance(e.position, center) <= radius]
+        if not detected:
+            log("  → Keine Feinde im Scanbereich.")
+        for e in detected:
+            log(f"  → Feind entdeckt: {e.name} bei {e.position}")
+        return detected
+
+    def set_drone_orbit(self, radius: float, log):
+        log(f"[{self.name}] setzt Drohnen in Orbit (R={radius})")
+        if not self.drones:
+            log("  Keine Drohnen verfügbar.")
+            return
+        angle_step = 360 / len(self.drones)
+        for i, d in enumerate(self.drones):
+            angle = i * angle_step
+            d.orbit(self.position, radius, angle, log)
+
+    def orbital_strike(self, enemies: List[Unit], target: Vec2, radius: float, damage: int, log):
+        if self.orbital_cooldown > 0:
+            log(f"[{self.name}] Orbitalangriff noch auf Cooldown: {self.orbital_cooldown} Züge")
+            return
+        log(f"[{self.name}] ruft Himmelslanze auf Ziel {target} (R={radius})")
+        hit_any = False
+        for e in enemies:
+            if distance(e.position, target) <= radius:
+                e.take_damage(damage, log)
+                hit_any = True
+        if not hit_any:
+            log("  → Kein Ziel im Einschlagsradius.")
+        self.orbital_cooldown = 3
+
+    def tick(self, log):
+        if self.orbital_cooldown > 0:
+            self.orbital_cooldown -= 1
+        log(f"[{self.name}] Nächster Zug. Orbital‑Cooldown: {self.orbital_cooldown}")
+
+
+# --- Simple "Engine" für die Browser-Demo ---
+
+class CommandHorizonDemo:
+    def __init__(self, log_func, status_func):
+        self.log = log_func
+        self.status = status_func
+        self.reset()
+
+    def reset(self):
+        self.log("=== NEUE MISSION: FALL DER SKYLINE (DEMO) ===")
+        friendly1 = Unit("Infanterie‑Trupp Alpha", (0, 0))
+        friendly2 = Unit("Infanterie‑Trupp Beta", (2, 1))
+        drone1 = Drone("Falcon‑Drohne 1", (0, -2))
+        drone2 = Drone("Falcon‑Drohne 2", (1, -2))
+
+        self.enemies = [
+            Unit("Dominion‑Drohne A", (10, 10), is_enemy=True),
+            Unit("Dominion‑Drohne B", (12, 9), is_enemy=True),
+            Unit("Dominion‑Mech", (15, 15), hp=200, is_enemy=True),
+        ]
+
+        self.commander = Commander(
+            name="Kommandant Auron Voss",
+            position=(0, 0),
+            units=[friendly1, friendly2],
+            drones=[drone1, drone2],
+        )
+        self.status("Mission aktiv. Nutze die Buttons links.")
+        self.log("Kommandant Auron Voss ist online.\n")
+
+    def action_scan(self):
+        self.commander.scan_ping(self.enemies, center=(5, 5), radius=10, log=self.log)
+
+    def action_orbit(self):
+        self.commander.set_drone_orbit(radius=3.0, log=self.log)
+
+    def action_move(self):
+        selected = self.commander.select_units_in_radius(center=(0, 0), radius=5, log=self.log)
+        self.commander.move_group(selected, target=(5, 5), log=self.log)
+
+    def action_orbital(self):
+        self.commander.orbital_strike(self.enemies, target=(15, 15), radius=4.0, damage=150, log=self.log)
+
+    def action_tick(self):
+        self.commander.tick(self.log)
+        self.status(f"Orbital‑Cooldown: {self.commander.orbital_cooldown}")
+
+
+# --- Verbindung zu HTML / DOM ---
+
+from js import document
+
+log_div = document.getElementById("log")
+status_div = document.getElementById("status")
+
+def log(text: str):
+    log_div.innerHTML += text + "<br>"
+    log_div.scrollTop = log_div.scrollHeight
+
+def set_status(text: str):
+    status_div.innerText = text
+
+demo = CommandHorizonDemo(log, set_status)
+
+def bind_button(id_, func):
+    btn = document.getElementById(id_)
+    def handler(event):
+        func()
+    btn.addEventListener("click", handler)
+
+bind_button("btn-scan", demo.action_scan)
+bind_button("btn-orbit", demo.action_orbit)
+bind_button("btn-move", demo.action_move)
+bind_button("btn-orbital", demo.action_orbital)
+bind_button("btn-tick", demo.action_tick)
+bind_button("btn-reset", demo.reset)
+  </py-script>
+</body>
+</html>
