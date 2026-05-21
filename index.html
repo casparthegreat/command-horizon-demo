@@ -1,152 +1,181 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <title>Red vs Black – Star Battle</title>
-  <style>
-    body { margin: 0; background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; }
-    canvas { background: #222; border: 3px solid #fff; }
-  </style>
-</head>
-<body>
-<canvas id="game" width="800" height="400"></canvas>
+import pygame
+import sys
+import random
 
-<script>
-const c = document.getElementById("game");
-const ctx = c.getContext("2d");
+pygame.init()
 
-const FLOOR = 350;
-const GRAVITY = 0.6;
+# Fenster
+WIDTH, HEIGHT = 800, 400
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Red vs Black – Star Battle")
 
-const player = { x: 80, y: FLOOR, w: 30, h: 30, vx: 0, vy: 0, speed: 4, onGround: true, color: "red" };
-const enemy  = { x: 650, y: FLOOR, w: 30, h: 30, vx: -2, color: "black" };
+clock = pygame.time.Clock()
 
-let stars = [];
-let keys = {};
-let score = 0;
-let gameOver = false;
+# Farben
+RED = (255, 0, 0)
+BLACK = (0, 0, 0)
+YELLOW = (255, 255, 0)
+WHITE = (255, 255, 255)
+GREY = (80, 80, 80)
 
-document.addEventListener("keydown", e => keys[e.key] = true);
-document.addEventListener("keyup",   e => keys[e.key] = false);
+# Spielfeld
+FLOOR = 350
+GRAVITY = 0.6
 
-function shoot(dir) {
-  stars.push({ x: player.x + 15, y: player.y - 15, r: 6, vx: dir * 7 });
-}
+# Spieler
+player = pygame.Rect(80, FLOOR - 30, 30, 30)
+player_vx = 0
+player_vy = 0
+player_speed = 4
+on_ground = True
+lives = 3
+score = 0
 
-function updatePlayer() {
-  player.vx = 0;
-  if (keys["a"]) player.vx = -player.speed;
-  if (keys["d"]) player.vx =  player.speed;
+# Gegner
+enemy = pygame.Rect(650, FLOOR - 30, 30, 30)
+enemy_vx = -2
 
-  if ((keys["w"] || keys[" "]) && player.onGround) {
-    player.vy = -12;
-    player.onGround = false;
-  }
+# Sterne des Spielers
+stars = []
 
-  player.x += player.vx;
-  player.vy += GRAVITY;
-  player.y += player.vy;
+# Schüsse des Gegners
+enemy_bullets = []
+enemy_shoot_timer = 0
 
-  if (player.y >= FLOOR) {
-    player.y = FLOOR;
-    player.vy = 0;
-    player.onGround = true;
-  }
-}
+def shoot_player(direction):
+    stars.append({
+        "x": player.centerx,
+        "y": player.centery,
+        "vx": direction * 7,
+        "r": 6
+    })
 
-function updateEnemy() {
-  enemy.x += enemy.vx;
-  if (enemy.x < 400 || enemy.x > 760) enemy.vx *= -1;
+def enemy_shoot():
+    enemy_bullets.append({
+        "x": enemy.centerx,
+        "y": enemy.centery,
+        "vx": -5,
+        "r": 5
+    })
 
-  if (collide(player, enemy)) gameOver = true;
-}
+def draw_star(x, y, r):
+    points = []
+    for i in range(5):
+        angle = i * (3.14159 * 2) / 5 - 3.14159 / 2
+        x1 = x + r * pygame.math.Vector2(1, 0).rotate_rad(angle).x
+        y1 = y + r * pygame.math.Vector2(1, 0).rotate_rad(angle).y
+        points.append((x1, y1))
+    pygame.draw.polygon(screen, YELLOW, points)
 
-function updateStars() {
-  if (keys["j"] && !keys["_shotR"]) { shoot(1); keys["_shotR"] = true; }
-  if (!keys["j"]) keys["_shotR"] = false;
+def circle_rect_collision(cx, cy, r, rect):
+    closest_x = max(rect.left, min(cx, rect.right))
+    closest_y = max(rect.top, min(cy, rect.bottom))
+    dx = cx - closest_x
+    dy = cy - closest_y
+    return dx*dx + dy*dy < r*r
 
-  if (keys["k"] && !keys["_shotL"]) { shoot(-1); keys["_shotL"] = true; }
-  if (!keys["k"]) keys["_shotL"] = false;
+game_over = False
 
-  stars.forEach(s => s.x += s.vx);
-  stars = stars.filter(s => s.x > -20 && s.x < 820);
+while True:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
 
-  stars.forEach((s, i) => {
-    if (circleRect(s, enemy)) {
-      score++;
-      enemy.x = 650;
-      enemy.vx = (Math.random() > 0.5 ? 1 : -1) * 2;
-      stars.splice(i, 1);
-    }
-  });
-}
+    keys = pygame.key.get_pressed()
 
-function collide(a, b) {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y - a.h < b.y && a.y > b.y - b.h;
-}
+    if not game_over:
 
-function circleRect(c, r) {
-  const cx = Math.max(r.x, Math.min(c.x, r.x + r.w));
-  const cy = Math.max(r.y - r.h, Math.min(c.y, r.y));
-  const dx = c.x - cx;
-  const dy = c.y - cy;
-  return dx*dx + dy*dy < c.r*c.r;
-}
+        # Bewegung
+        player_vx = (keys[pygame.K_d] - keys[pygame.K_a]) * player_speed
 
-function drawStar(x, y, r) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.fillStyle = "yellow";
-  ctx.beginPath();
-  for (let i = 0; i < 5; i++) {
-    const a = i * (Math.PI * 2) / 5 - Math.PI / 2;
-    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-    const a2 = a + Math.PI / 5;
-    ctx.lineTo(Math.cos(a2) * (r/2), Math.sin(a2) * (r/2));
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
+        if (keys[pygame.K_w] or keys[pygame.K_SPACE]) and on_ground:
+            player_vy = -12
+            on_ground = False
 
-function draw() {
-  ctx.clearRect(0, 0, c.width, c.height);
+        # Schießen
+        if keys[pygame.K_j]:
+            shoot_player(1)
+        if keys[pygame.K_k]:
+            shoot_player(-1)
 
-  ctx.fillStyle = "#555";
-  ctx.fillRect(0, FLOOR + 20, c.width, 40);
+        # Physik
+        player.x += player_vx
+        player_vy += GRAVITY
+        player.y += player_vy
 
-  ctx.fillStyle = "red";
-  ctx.fillRect(player.x, player.y - player.h, player.w, player.h);
+        if player.y >= FLOOR - player.height:
+            player.y = FLOOR - player.height
+            player_vy = 0
+            on_ground = True
 
-  ctx.fillStyle = "black";
-  ctx.fillRect(enemy.x, enemy.y - enemy.h, enemy.w, enemy.h);
+        # Gegner bewegen
+        enemy.x += enemy_vx
+        if enemy.x < 400 or enemy.x > 760:
+            enemy_vx *= -1
 
-  stars.forEach(s => drawStar(s.x, s.y, s.r));
+        # Gegner schießt alle 60 Frames
+        enemy_shoot_timer += 1
+        if enemy_shoot_timer >= 60:
+            enemy_shoot()
+            enemy_shoot_timer = 0
 
-  ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
-  ctx.fillText("Score: " + score, 10, 25);
+        # Kollision Spieler–Gegner
+        if player.colliderect(enemy):
+            lives -= 1
+            enemy.x = 650
+            enemy_vx = random.choice([-2, 2])
+            if lives <= 0:
+                game_over = True
 
-  if (gameOver) {
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.fillStyle = "white";
-    ctx.font = "40px Arial";
-    ctx.fillText("GAME OVER", 300, 200);
-  }
-}
+        # Sterne bewegen
+        for s in stars:
+            s["x"] += s["vx"]
 
-function loop() {
-  if (!gameOver) {
-    updatePlayer();
-    updateEnemy();
-    updateStars();
-  }
-  draw();
-  requestAnimationFrame(loop);
-}
+        stars = [s for s in stars if -20 < s["x"] < WIDTH + 20]
 
-loop();
-</script>
-</body>
-</html>
+        # Sterne treffen Gegner
+        for s in stars[:]:
+            if circle_rect_collision(s["x"], s["y"], s["r"], enemy):
+                score += 1
+                stars.remove(s)
+                enemy.x = 650
+                enemy_vx = random.choice([-2, 2])
+
+        # Gegner-Schüsse bewegen
+        for b in enemy_bullets:
+            b["x"] += b["vx"]
+
+        enemy_bullets = [b for b in enemy_bullets if b["x"] > -20]
+
+        # Gegner-Schüsse treffen Spieler
+        for b in enemy_bullets[:]:
+            if circle_rect_collision(b["x"], b["y"], b["r"], player):
+                lives -= 1
+                enemy_bullets.remove(b)
+                if lives <= 0:
+                    game_over = True
+
+    # Zeichnen
+    screen.fill((30, 30, 30))
+    pygame.draw.rect(screen, GREY, (0, FLOOR, WIDTH, 50))
+
+    pygame.draw.rect(screen, RED, player)
+    pygame.draw.rect(screen, BLACK, enemy)
+
+    for s in stars:
+        draw_star(s["x"], s["y"], s["r"])
+
+    for b in enemy_bullets:
+        pygame.draw.circle(screen, RED, (int(b["x"]), int(b["y"])), b["r"])
+
+    font = pygame.font.SysFont(None, 30)
+    screen.blit(font.render(f"Score: {score}", True, WHITE), (10, 10))
+    screen.blit(font.render(f"Leben: {lives}", True, WHITE), (10, 40))
+
+    if game_over:
+        big = pygame.font.SysFont(None, 60)
+        screen.blit(big.render("GAME OVER", True, WHITE), (280, 150))
+
+    pygame.display.flip()
+    clock.tick(60)
