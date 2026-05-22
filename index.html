@@ -38,7 +38,7 @@ const player = {
   vy: 0,
   onGround: true,
   color: 'red',
-  hp: 10   // 10 Leben
+  hp: 10   // Start mit 10 Leben
 };
 
 // GEGNER
@@ -79,7 +79,6 @@ const countdownInterval = setInterval(() => {
     setTimeout(() => flash = false, 150);
     clearInterval(countdownInterval);
 
-    // LEVEL 1 STARTEN NACH COUNTDOWN
     spawnLevel();
   }
 }, 1000);
@@ -107,7 +106,7 @@ function shootStar(vx, vy) {
   });
 }
 
-// GEGNERTYPEN (Tank entfernt)
+// GEGNERTYPEN
 const enemyTypes = ["melee", "sniper", "flyer"];
 
 function randomType() {
@@ -158,11 +157,13 @@ function createEnemy(type, x, y) {
 function spawnLevel() {
   enemies.length = 0;
 
+  // Spielerleben zurücksetzen
+  player.hp = 10;
+
   for (let i = 0; i < 3; i++) {
     const x = 600 + i * -100;
     const y = groundY - 40;
 
-    // Level 1: KEIN Boss
     if (level > 1 && Math.random() < 0.10) {
       enemies.push(createBoss(x, y));
     } else {
@@ -197,7 +198,6 @@ function enemyShoot(enemy) {
 // UPDATE
 function update() {
   if (gameOver) return;
-
   if (countdownActive) return;
 
   if (levelScreen) {
@@ -274,7 +274,6 @@ function update() {
 
     let shootDelay = enemy.type === "boss" ? 500 : 1200;
 
-    // Level 1: Gegner schießen extrem langsam
     if (level === 1) shootDelay = 2000;
 
     if (Date.now() - enemy.lastShot > shootDelay) {
