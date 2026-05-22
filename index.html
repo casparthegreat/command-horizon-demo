@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>Blockkampf Debug</title>
+  <title>Blockkampf</title>
   <style>
     body { margin: 0; background: #222; display: flex; justify-content: center; align-items: center; height: 100vh; }
     canvas { background: #333; border: 2px solid #fff; }
@@ -14,18 +14,19 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-// WICHTIG: Boden deutlich höher setzen
-const groundY = 250;
 const gravity = 0.6;
+const groundY = 300;
+
+let gameOver = false;
 
 // Spieler
 const player = {
   x: 100,
-  y: 200,   // SICHTBARER Startpunkt
+  y: groundY - 40,
   w: 40,
   h: 40,
   vy: 0,
-  onGround: false,
+  onGround: true,
   color: 'red',
   hp: 3
 };
@@ -33,7 +34,7 @@ const player = {
 // Gegner
 const enemy = {
   x: 600,
-  y: 200,   // SICHTBARER Startpunkt
+  y: groundY - 40,
   w: 40,
   h: 40,
   color: 'black',
@@ -43,15 +44,204 @@ const enemy = {
   lastShot: 0
 };
 
+// Projektile
 const stars = [];
 const enemyStars = [];
 
+// Eingaben
 const keys = { left: false, right: false, jump: false, shoot: false };
 
-document.addEventListener('keydown', e => {
+document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyA') keys.left = true;
   if (e.code === 'KeyD') keys.right = true;
   if (e.code === 'KeyW') keys.jump = true;
   if (e.code === 'Space') keys.shoot = true;
+
+  // Neustart
+  if (e.code === 'KeyR' && gameOver) location.reload();
 });
-document.addEventListener('keyup',
+
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'KeyA') keys.left = false;
+  if (e.code === 'KeyD') keys.right = false;
+  if (e.code === 'KeyW') keys.jump = false;
+  if (e.code === 'Space') keys.shoot = false;
+});
+
+// Kollision
+function rectsCollide(a, b) {
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
+}
+
+let canShoot = true;
+
+function update() {
+  if (gameOver) return;
+
+  // Spieler Bewegung
+  if (keys.left) player.x -= 4;
+  if (keys.right) player.x += 4;
+
+  // Spielfeldgrenzen Spieler
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.w > canvas.width) player.x = canvas.width - player.w;
+
+  // Springen
+  if (keys.jump && player.onGround) {
+    player.vy = -12;
+    player.onGround = false;
+  }
+
+  // Schwerkraft
+  player.vy += gravity;
+  player.y += player.vy;
+
+  // Boden-Kollision
+  if (player.y + player.h > groundY) {
+    player.y = groundY - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  }
+
+  // Spieler schießt
+  if (keys.shoot && canShoot) {
+    stars.push({
+      x: player.x + player.w,
+      y: player.y + player.h / 2,
+      r: 6,
+      vx: 8,
+      color: 'yellow'
+    });
+    canShoot = false;
+    setTimeout(() => canShoot = true, 300);
+  }
+
+  // Spieler-Projektile
+  for (let i = stars.length - 1; i >= 0; i--) {
+    const s = stars[i];
+    s.x += s.vx;
+
+    // Gegner getroffen
+    if (enemy.hp > 0 && rectsCollide({ x: s.x - s.r, y: s.y - s.r, w: s.r*2, h: s.r*2 }, enemy)) {
+      enemy.hp--;
+      if (enemy.hp <= 0) enemy.hp = 0;
+      stars.splice(i, 1);
+      continue;
+    }
+
+    if (s.x > canvas.width) stars.splice(i, 1);
+  }
+
+  // Gegner Bewegung (nur wenn lebendig)
+  if (enemy.hp > 0) {
+    enemy.x += enemy.dir * enemy.speed;
+
+    if (enemy.x < 0) enemy.x = 0;
+    if (enemy.x + enemy.w > canvas.width) enemy.x = canvas.width - enemy.w;
+  }
+
+  // Gegner schießt (nur wenn lebendig)
+  if (enemy.hp > 0 && Date.now() - enemy.lastShot > 1200) {
+    enemyStars.push({
+      x: enemy.x,
+      y: enemy.y + enemy.h / 2,
+      r: 6,
+      vx: -6,
+      color: 'white'
+    });
+    enemy.lastShot = Date.now();
+  }
+
+  // Gegner-Projektile
+  for (let i = enemyStars.length - 1; i >= 0; i--) {
+    const s = enemyStars[i];
+    s.x += s.vx;
+
+    // Spieler getroffen
+    if (rectsCollide({ x: s.x - s.r, y: s.y - s.r, w: s.r*2, h: s.r*2 }, player)) {
+      player.hp--;
+      if (player.hp <= 0) {
+        player.hp = 0;
+        gameOver = true;
+      }
+      enemyStars.splice(i, 1);
+      continue;
+    }
+
+    if (s.x < 0) enemyStars.splice(i, 1);
+  }
+}
+
+// Stern zeichnen
+function drawStar(x, y, r, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    ctx.lineTo(Math.cos((18 + i * 72) * Math.PI / 180) * r,
+               -Math.sin((18 + i * 72) * Math.PI / 180) * r);
+    ctx.lineTo(Math.cos((54 + i * 72) * Math.PI / 180) * (r / 2),
+               -Math.sin((54 + i * 72) * Math.PI / 180) * (r / 2));
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // HUD
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText("Spieler Leben: " + player.hp, 20, 30);
+  ctx.fillText("Gegner Leben: " + enemy.hp, 20, 60);
+
+  // Boden
+  ctx.fillStyle = '#555';
+  ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+  // Spieler
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+
+  // Gegner (nur wenn lebendig)
+  if (enemy.hp > 0) {
+    ctx.fillStyle = enemy.color;
+    ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
+  }
+
+  // Sterne
+  stars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
+  enemyStars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
+
+  // GAME OVER SCREEN
+  if (gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "60px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 160, canvas.height / 2);
+
+    ctx.font = "30px Arial";
+    ctx.fillText("Drücke R zum Neustart", canvas.width / 2 - 170, canvas.height / 2 + 50);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
