@@ -293,3 +293,114 @@ function update() {
       player.hp--;
       if (player.hp <= 0) gameOver = true;
       enemyStars.splice(i, 1);
+      continue;
+    }
+
+    if (s.x < 0 || s.x > canvas.width || s.y < 0 || s.y > canvas.height)
+      enemyStars.splice(i, 1);
+  }
+}
+
+// STERN ZEICHNEN
+function drawStar(x, y, r, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    ctx.lineTo(Math.cos((18 + i * 72) * Math.PI / 180) * r,
+               -Math.sin((18 + i * 72) * Math.PI / 180) * r);
+    ctx.lineTo(Math.cos((54 + i * 72) * Math.PI / 180) * (r / 2),
+               -Math.sin((54 + i * 72) * Math.PI / 180) * (r / 2));
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
+// ZEICHNEN
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // COUNTDOWN
+  if (countdownActive) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "80px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(countdown > 0 ? countdown : "GO!", canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  // FLASH
+  if (flash) {
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  // LEVELSCREEN
+  if (levelScreen) {
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "yellow";
+    ctx.font = "70px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("LEVEL " + level, canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  // HUD
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText("Leben: " + player.hp, 20, 30);
+  ctx.fillText("Level: " + level, 20, 60);
+
+  // BODEN
+  ctx.fillStyle = '#555';
+  ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+  // SPIELER
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+
+  // GEGNER
+  for (const enemy of enemies) {
+    if (enemy.hp <= 0) continue;
+
+    ctx.fillStyle =
+      enemy.type === "boss" ? "red" :
+      enemy.type === "sniper" ? "purple" :
+      enemy.type === "flyer" ? "cyan" :
+      "black";
+
+    ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
+  }
+
+  // PROJEKTILE
+  stars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
+  enemyStars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
+
+  // GAME OVER
+  if (gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "white";
+    ctx.font = "60px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+spawnLevel();
+loop();
+</script>
+</body>
+</html>
