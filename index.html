@@ -20,6 +20,21 @@ const groundY = 300;
 let gameOver = false;
 let win = false;
 
+// Countdown + Flash
+let countdown = 3;
+let countdownActive = true;
+let flash = false;
+
+const countdownInterval = setInterval(() => {
+  countdown--;
+  if (countdown <= 0) {
+    countdownActive = false;
+    flash = true;
+    setTimeout(() => flash = false, 150);
+    clearInterval(countdownInterval);
+  }
+}, 1000);
+
 // Spieler
 const player = {
   x: 100,
@@ -45,7 +60,6 @@ const keys = { left: false, right: false, jump: false, shootLeft: false, shootRi
 document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyA') keys.left = true;
   if (e.code === 'KeyD') keys.right = true;
-
   if (e.code === 'Space') keys.jump = true;
 
   if (e.code === 'KeyA') keys.shootLeft = true;
@@ -87,8 +101,8 @@ function shootStar(vx, vy) {
   });
 }
 
-// Gegnertypen
-const enemyTypes = ["melee", "sniper", "tank", "flyer"];
+// Gegnertypen (Tank entfernt!)
+const enemyTypes = ["melee", "sniper", "flyer"];
 
 function randomType() {
   return enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
@@ -123,7 +137,6 @@ function createEnemy(type, x, y) {
 
   if (type === "melee") { base.hp = 2; base.speed = 3; }
   if (type === "sniper") { base.hp = 1; base.speed = 1; }
-  if (type === "tank") { base.hp = 8; base.speed = 1; base.w = 60; base.h = 60; }
   if (type === "flyer") { base.hp = 2; base.speed = 2; base.y -= 120; }
 
   return base;
@@ -162,7 +175,7 @@ function enemyShoot(enemy) {
 }
 
 function update() {
-  if (gameOver || win) return;
+  if (gameOver || win || countdownActive) return;
 
   // Bewegung Spieler
   if (keys.left) player.x -= 4;
@@ -225,7 +238,6 @@ function update() {
     aliveEnemies++;
 
     if (enemy.type === "melee") enemy.x += enemy.x < player.x ? enemy.speed : -enemy.speed;
-    if (enemy.type === "tank") enemy.x -= enemy.speed;
     if (enemy.type === "flyer") enemy.x += Math.sin(Date.now() / 500) * 2;
 
     if (enemy.x < 0) enemy.x = 0;
@@ -279,6 +291,24 @@ function drawStar(x, y, r, color) {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // COUNTDOWN
+  if (countdownActive) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "80px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(countdown > 0 ? countdown : "GO!", canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  // FLASH
+  if (flash) {
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
   const aliveEnemies = enemies.filter(e => e.hp > 0).length;
 
   ctx.fillStyle = "white";
@@ -297,7 +327,6 @@ function draw() {
 
     ctx.fillStyle =
       enemy.type === "boss" ? "red" :
-      enemy.type === "tank" ? "brown" :
       enemy.type === "sniper" ? "purple" :
       enemy.type === "flyer" ? "cyan" :
       "black";
