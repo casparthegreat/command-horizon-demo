@@ -21,23 +21,13 @@ let gameOver = false;
 
 // LEVELSYSTEM
 let level = 1;
-let levelScreen = true;
-let levelScreenTimer = 1500;
+let levelScreen = false;
+let levelScreenTimer = 0;
 
 // COUNTDOWN + FLASH
 let countdown = 3;
 let countdownActive = true;
 let flash = false;
-
-const countdownInterval = setInterval(() => {
-  countdown--;
-  if (countdown <= 0) {
-    countdownActive = false;
-    flash = true;
-    setTimeout(() => flash = false, 150);
-    clearInterval(countdownInterval);
-  }
-}, 1000);
 
 // SPIELER
 const player = {
@@ -48,7 +38,7 @@ const player = {
   vy: 0,
   onGround: true,
   color: 'red',
-  hp: 3
+  hp: 10   // 10 Leben
 };
 
 // GEGNER
@@ -79,6 +69,20 @@ document.addEventListener('keyup', (e) => {
   if (e.code === 'KeyS') keys.shootDown = false;
   if (e.code === 'Space') keys.jump = false;
 });
+
+// COUNTDOWN START
+const countdownInterval = setInterval(() => {
+  countdown--;
+  if (countdown <= 0) {
+    countdownActive = false;
+    flash = true;
+    setTimeout(() => flash = false, 150);
+    clearInterval(countdownInterval);
+
+    // LEVEL 1 STARTEN NACH COUNTDOWN
+    spawnLevel();
+  }
+}, 1000);
 
 // KOLLISION
 function rectsCollide(a, b) {
@@ -192,7 +196,9 @@ function enemyShoot(enemy) {
 
 // UPDATE
 function update() {
-  if (gameOver || countdownActive) return;
+  if (gameOver) return;
+
+  if (countdownActive) return;
 
   if (levelScreen) {
     levelScreenTimer -= 16;
@@ -399,7 +405,6 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-spawnLevel();
 loop();
 </script>
 </body>
