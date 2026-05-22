@@ -50,28 +50,31 @@ const stars = [];
 const enemyStars = [];
 
 // Eingaben
-const keys = { left: false, right: false, jump: false, shoot: false };
+const keys = { left: false, right: false, jump: false, shootLeft: false, shootRight: false, shootUp: false, shootDown: false };
 
 document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyA') keys.left = true;
   if (e.code === 'KeyD') keys.right = true;
 
-  // SPRINGEN MIT LEERTASTE
+  // Springen
   if (e.code === 'Space') keys.jump = true;
 
-  if (e.code === 'KeyW') keys.jump = true;
-  if (e.code === 'KeyS') keys.shoot = true;
+  // Schießen in 4 Richtungen
+  if (e.code === 'KeyA') keys.shootLeft = true;
+  if (e.code === 'KeyD') keys.shootRight = true;
+  if (e.code === 'KeyW') keys.shootUp = true;
+  if (e.code === 'KeyS') keys.shootDown = true;
 
   // Neustart
   if (e.code === 'KeyR' && (gameOver || win)) location.reload();
 });
 
 document.addEventListener('keyup', (e) => {
-  if (e.code === 'KeyA') keys.left = false;
-  if (e.code === 'KeyD') keys.right = false;
+  if (e.code === 'KeyA') { keys.left = false; keys.shootLeft = false; }
+  if (e.code === 'KeyD') { keys.right = false; keys.shootRight = false; }
+  if (e.code === 'KeyW') keys.shootUp = false;
+  if (e.code === 'KeyS') keys.shootDown = false;
   if (e.code === 'Space') keys.jump = false;
-  if (e.code === 'KeyW') keys.jump = false;
-  if (e.code === 'KeyS') keys.shoot = false;
 });
 
 // Kollision
@@ -86,14 +89,25 @@ function rectsCollide(a, b) {
 
 let canShoot = true;
 
+function shootStar(vx, vy) {
+  stars.push({
+    x: player.x + player.w / 2,
+    y: player.y + player.h / 2,
+    r: 6,
+    vx: vx,
+    vy: vy,
+    color: 'yellow'
+  });
+}
+
 function update() {
   if (gameOver || win) return;
 
-  // Spieler Bewegung
+  // Bewegung
   if (keys.left) player.x -= 4;
   if (keys.right) player.x += 4;
 
-  // Spielfeldgrenzen Spieler
+  // Grenzen
   if (player.x < 0) player.x = 0;
   if (player.x + player.w > canvas.width) player.x = canvas.width - player.w;
 
@@ -107,60 +121,58 @@ function update() {
   player.vy += gravity;
   player.y += player.vy;
 
-  // Boden-Kollision
+  // Boden
   if (player.y + player.h > groundY) {
     player.y = groundY - player.h;
     player.vy = 0;
     player.onGround = true;
   }
 
-  // Spieler schießt
-  if (keys.shoot && canShoot) {
-    stars.push({
-      x: player.x + player.w,
-      y: player.y + player.h / 2,
-      r: 6,
-      vx: 8,
-      color: 'yellow'
-    });
-    canShoot = false;
-    setTimeout(() => canShoot = true, 300);
+  // SCHIESSEN IN 4 RICHTUNGEN
+  if (canShoot) {
+    if (keys.shootLeft) { shootStar(-8, 0); canShoot = false; }
+    if (keys.shootRight) { shootStar(8, 0); canShoot = false; }
+    if (keys.shootUp) { shootStar(0, -8); canShoot = false; }
+    if (keys.shootDown) { shootStar(0, 8); canShoot = false; }
+
+    if (!canShoot) setTimeout(() => canShoot = true, 200);
   }
 
   // Spieler-Projektile
   for (let i = stars.length - 1; i >= 0; i--) {
     const s = stars[i];
     s.x += s.vx;
+    s.y += s.vy;
 
-    // Gegner getroffen
     if (enemy.hp > 0 && rectsCollide({ x: s.x - s.r, y: s.y - s.r, w: s.r*2, h: s.r*2 }, enemy)) {
       enemy.hp--;
       if (enemy.hp <= 0) {
         enemy.hp = 0;
-        win = true; // WIN SCREEN
+        win = true;
       }
       stars.splice(i, 1);
       continue;
     }
 
-    if (s.x > canvas.width) stars.splice(i, 1);
+    if (s.x < 0 || s.x > canvas.width || s.y < 0 || s.y > canvas.height)
+      stars.splice(i, 1);
   }
 
-  // Gegner Bewegung (nur wenn lebendig)
+  // Gegner Bewegung
   if (enemy.hp > 0) {
     enemy.x += enemy.dir * enemy.speed;
-
     if (enemy.x < 0) enemy.x = 0;
     if (enemy.x + enemy.w > canvas.width) enemy.x = canvas.width - enemy.w;
   }
 
-  // Gegner schießt (nur wenn lebendig)
+  // Gegner schießt
   if (enemy.hp > 0 && Date.now() - enemy.lastShot > 1200) {
     enemyStars.push({
       x: enemy.x,
       y: enemy.y + enemy.h / 2,
       r: 6,
       vx: -6,
+      vy: 0,
       color: 'white'
     });
     enemy.lastShot = Date.now();
@@ -171,7 +183,6 @@ function update() {
     const s = enemyStars[i];
     s.x += s.vx;
 
-    // Spieler getroffen
     if (rectsCollide({ x: s.x - s.r, y: s.y - s.r, w: s.r*2, h: s.r*2 }, player)) {
       player.hp--;
       if (player.hp <= 0) {
@@ -220,7 +231,7 @@ function draw() {
   ctx.fillStyle = player.color;
   ctx.fillRect(player.x, player.y, player.w, player.h);
 
-  // Gegner (nur wenn lebendig)
+  // Gegner
   if (enemy.hp > 0) {
     ctx.fillStyle = enemy.color;
     ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
@@ -230,15 +241,13 @@ function draw() {
   stars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
   enemyStars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
 
-  // GAME OVER SCREEN
+  // GAME OVER
   if (gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.7)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     ctx.fillStyle = "white";
     ctx.font = "60px Arial";
     ctx.fillText("GAME OVER", canvas.width / 2 - 160, canvas.height / 2);
-
     ctx.font = "30px Arial";
     ctx.fillText("Drücke R zum Neustart", canvas.width / 2 - 170, canvas.height / 2 + 50);
   }
@@ -247,11 +256,9 @@ function draw() {
   if (win) {
     ctx.fillStyle = "rgba(0,0,0,0.7)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     ctx.fillStyle = "yellow";
     ctx.font = "60px Arial";
     ctx.fillText("YOU WIN!", canvas.width / 2 - 150, canvas.height / 2);
-
     ctx.font = "30px Arial";
     ctx.fillText("Drücke R zum Neustart", canvas.width / 2 - 170, canvas.height / 2 + 50);
   }
