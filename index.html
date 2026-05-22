@@ -18,9 +18,13 @@ const gravity = 0.6;
 const groundY = 300;
 
 let gameOver = false;
-let win = false;
 
-// Countdown + Flash
+// LEVELSYSTEM
+let level = 1;
+let levelScreen = true;
+let levelScreenTimer = 1500;
+
+// COUNTDOWN + FLASH
 let countdown = 3;
 let countdownActive = true;
 let flash = false;
@@ -35,7 +39,7 @@ const countdownInterval = setInterval(() => {
   }
 }, 1000);
 
-// Spieler
+// SPIELER
 const player = {
   x: 100,
   y: groundY - 40,
@@ -47,14 +51,12 @@ const player = {
   hp: 3
 };
 
-// Gegnerliste
+// GEGNER
 const enemies = [];
-
-// Projektile
 const stars = [];
 const enemyStars = [];
 
-// Eingaben
+// INPUT
 const keys = { left: false, right: false, jump: false, shootLeft: false, shootRight: false, shootUp: false, shootDown: false };
 
 document.addEventListener('keydown', (e) => {
@@ -67,7 +69,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyW') keys.shootUp = true;
   if (e.code === 'KeyS') keys.shootDown = true;
 
-  if (e.code === 'KeyR' && (gameOver || win)) location.reload();
+  if (e.code === 'KeyR' && gameOver) location.reload();
 });
 
 document.addEventListener('keyup', (e) => {
@@ -78,7 +80,7 @@ document.addEventListener('keyup', (e) => {
   if (e.code === 'Space') keys.jump = false;
 });
 
-// Kollision
+// KOLLISION
 function rectsCollide(a, b) {
   return (
     a.x < b.x + b.w &&
@@ -101,60 +103,74 @@ function shootStar(vx, vy) {
   });
 }
 
-// Gegnertypen (Tank entfernt!)
+// GEGNERTYPEN (Tank entfernt)
 const enemyTypes = ["melee", "sniper", "flyer"];
 
 function randomType() {
   return enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
 }
 
-// Boss erstellen
+// BOSS
 function createBoss(x, y) {
   return {
     x: x,
     y: y,
     w: 80,
     h: 80,
-    hp: 20,
-    speed: 1,
+    hp: 20 + level * 3,
+    speed: 1 + level * 0.1,
     lastShot: 0,
     type: "boss"
   };
 }
 
-// Normale Gegner erstellen
+// NORMALER GEGNER
 function createEnemy(type, x, y) {
   const base = {
     x: x,
     y: y,
     w: 40,
     h: 40,
-    hp: 3,
-    speed: 2,
+    hp: 3 + level,
+    speed: 2 + level * 0.1,
     lastShot: 0,
     type: type
   };
 
-  if (type === "melee") { base.hp = 2; base.speed = 3; }
-  if (type === "sniper") { base.hp = 1; base.speed = 1; }
-  if (type === "flyer") { base.hp = 2; base.speed = 2; base.y -= 120; }
+  // LEVEL 1 EXTREM EINFACH
+  if (level === 1) {
+    base.hp = 1;
+    base.speed = 1;
+  }
+
+  if (type === "melee") base.speed += 1;
+  if (type === "sniper") base.speed -= 1;
+  if (type === "flyer") base.y -= 120;
 
   return base;
 }
 
-// 3 Gegner mit 10% Bosschance
-for (let i = 0; i < 3; i++) {
-  const x = 600 + i * -100;
-  const y = groundY - 40;
+// LEVEL STARTEN
+function spawnLevel() {
+  enemies.length = 0;
 
-  if (Math.random() < 0.10) {
-    enemies.push(createBoss(x, y));
-  } else {
-    enemies.push(createEnemy(randomType(), x, y));
+  for (let i = 0; i < 3; i++) {
+    const x = 600 + i * -100;
+    const y = groundY - 40;
+
+    // Level 1: KEIN Boss
+    if (level > 1 && Math.random() < 0.10) {
+      enemies.push(createBoss(x, y));
+    } else {
+      enemies.push(createEnemy(randomType(), x, y));
+    }
   }
+
+  levelScreen = true;
+  levelScreenTimer = 1500;
 }
 
-// Gegner schießt in Richtung Spieler
+// GEGNER SCHIEßT
 function enemyShoot(enemy) {
   const dx = (player.x + player.w / 2) - (enemy.x + enemy.w / 2);
   const dy = (player.y + player.h / 2) - (enemy.y + enemy.h / 2);
@@ -174,10 +190,17 @@ function enemyShoot(enemy) {
   });
 }
 
+// UPDATE
 function update() {
-  if (gameOver || win || countdownActive) return;
+  if (gameOver || countdownActive) return;
 
-  // Bewegung Spieler
+  if (levelScreen) {
+    levelScreenTimer -= 16;
+    if (levelScreenTimer <= 0) levelScreen = false;
+    return;
+  }
+
+  // SPIELER BEWEGUNG
   if (keys.left) player.x -= 4;
   if (keys.right) player.x += 4;
 
@@ -198,7 +221,7 @@ function update() {
     player.onGround = true;
   }
 
-  // Spieler schießt
+  // SCHIEßEN
   if (canShoot) {
     if (keys.shootLeft)  { shootStar(-8, 0); canShoot = false; }
     if (keys.shootRight) { shootStar(8, 0);  canShoot = false; }
@@ -208,7 +231,7 @@ function update() {
     if (!canShoot) setTimeout(() => canShoot = true, 200);
   }
 
-  // Spieler-Projektile
+  // SPIELER-PROJEKTILE
   for (let i = stars.length - 1; i >= 0; i--) {
     const s = stars[i];
     s.x += s.vx;
@@ -230,7 +253,7 @@ function update() {
       stars.splice(i, 1);
   }
 
-  // Gegner bewegen + schießen
+  // GEGNER UPDATE
   let aliveEnemies = 0;
 
   for (const enemy of enemies) {
@@ -243,7 +266,10 @@ function update() {
     if (enemy.x < 0) enemy.x = 0;
     if (enemy.x + enemy.w > canvas.width) enemy.x = canvas.width - enemy.w;
 
-    const shootDelay = enemy.type === "boss" ? 500 : 1200;
+    let shootDelay = enemy.type === "boss" ? 500 : 1200;
+
+    // Level 1: Gegner schießen extrem langsam
+    if (level === 1) shootDelay = 2000;
 
     if (Date.now() - enemy.lastShot > shootDelay) {
       enemyShoot(enemy);
@@ -251,9 +277,13 @@ function update() {
     }
   }
 
-  if (aliveEnemies === 0) win = true;
+  // LEVEL GESCHAFFT
+  if (aliveEnemies === 0) {
+    level++;
+    spawnLevel();
+  }
 
-  // Gegner-Projektile
+  // GEGNER-PROJEKTILE
   for (let i = enemyStars.length - 1; i >= 0; i--) {
     const s = enemyStars[i];
     s.x += s.vx;
@@ -263,104 +293,3 @@ function update() {
       player.hp--;
       if (player.hp <= 0) gameOver = true;
       enemyStars.splice(i, 1);
-      continue;
-    }
-
-    if (s.x < 0 || s.x > canvas.width || s.y < 0 || s.y > canvas.height)
-      enemyStars.splice(i, 1);
-  }
-}
-
-// Stern zeichnen
-function drawStar(x, y, r, color) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.beginPath();
-  for (let i = 0; i < 5; i++) {
-    ctx.lineTo(Math.cos((18 + i * 72) * Math.PI / 180) * r,
-               -Math.sin((18 + i * 72) * Math.PI / 180) * r);
-    ctx.lineTo(Math.cos((54 + i * 72) * Math.PI / 180) * (r / 2),
-               -Math.sin((54 + i * 72) * Math.PI / 180) * (r / 2));
-  }
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.restore();
-}
-
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // COUNTDOWN
-  if (countdownActive) {
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = "white";
-    ctx.font = "80px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(countdown > 0 ? countdown : "GO!", canvas.width / 2, canvas.height / 2);
-    return;
-  }
-
-  // FLASH
-  if (flash) {
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-
-  const aliveEnemies = enemies.filter(e => e.hp > 0).length;
-
-  ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
-  ctx.fillText("Spieler Leben: " + player.hp, 20, 30);
-  ctx.fillText("Gegner übrig: " + aliveEnemies, 20, 60);
-
-  ctx.fillStyle = '#555';
-  ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
-
-  ctx.fillStyle = player.color;
-  ctx.fillRect(player.x, player.y, player.w, player.h);
-
-  for (const enemy of enemies) {
-    if (enemy.hp <= 0) continue;
-
-    ctx.fillStyle =
-      enemy.type === "boss" ? "red" :
-      enemy.type === "sniper" ? "purple" :
-      enemy.type === "flyer" ? "cyan" :
-      "black";
-
-    ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
-  }
-
-  stars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
-  enemyStars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
-
-  if (gameOver) {
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "white";
-    ctx.font = "60px Arial";
-    ctx.fillText("GAME OVER", canvas.width / 2 - 160, canvas.height / 2);
-  }
-
-  if (win) {
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "yellow";
-    ctx.font = "60px Arial";
-    ctx.fillText("YOU WIN!", canvas.width / 2 - 150, canvas.height / 2);
-  }
-}
-
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
-
-loop();
-</script>
-</body>
-</html>
