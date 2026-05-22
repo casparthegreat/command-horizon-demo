@@ -32,7 +32,7 @@ const player = {
   hp: 3
 };
 
-// Gegnerliste
+// Gegnerliste (nur 2 Gegner!)
 const enemies = [];
 
 // Projektile
@@ -108,11 +108,9 @@ function createEnemy(type, x, y) {
   return base;
 }
 
-// Gegner spawnen
+// NUR 2 Gegner spawnen
 enemies.push(createEnemy("melee", 600, groundY - 40));
 enemies.push(createEnemy("sniper", 700, groundY - 40));
-enemies.push(createEnemy("tank", 500, groundY - 60));
-enemies.push(createEnemy("flyer", 400, groundY - 40));
 
 // Gegner schießt in Richtung Spieler
 function enemyShoot(enemy) {
@@ -198,8 +196,7 @@ function update() {
     aliveEnemies++;
 
     if (enemy.type === "melee") enemy.x += enemy.x < player.x ? enemy.speed : -enemy.speed;
-    if (enemy.type === "tank") enemy.x -= enemy.speed;
-    if (enemy.type === "flyer") enemy.x += Math.sin(Date.now() / 500) * 2;
+    if (enemy.type === "sniper") {} // bleibt stehen
 
     if (enemy.x < 0) enemy.x = 0;
     if (enemy.x + enemy.w > canvas.width) enemy.x = canvas.width - enemy.w;
@@ -267,9 +264,8 @@ function draw() {
     if (enemy.hp <= 0) continue;
 
     ctx.fillStyle =
-      enemy.type === "tank" ? "brown" :
       enemy.type === "sniper" ? "purple" :
-      enemy.type === "flyer" ? "cyan" :
+      enemy.type === "melee" ? "black" :
       "black";
 
     ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
