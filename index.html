@@ -32,7 +32,7 @@ const player = {
   hp: 3
 };
 
-// Gegnerliste (nur 2 Gegner!)
+// Gegnerliste
 const enemies = [];
 
 // Projektile
@@ -87,7 +87,28 @@ function shootStar(vx, vy) {
   });
 }
 
-// Gegnertypen erstellen
+// Gegnertypen
+const enemyTypes = ["melee", "sniper", "tank", "flyer"];
+
+function randomType() {
+  return enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+}
+
+// Boss erstellen
+function createBoss(x, y) {
+  return {
+    x: x,
+    y: y,
+    w: 80,
+    h: 80,
+    hp: 20,
+    speed: 1,
+    lastShot: 0,
+    type: "boss"
+  };
+}
+
+// Normale Gegner erstellen
 function createEnemy(type, x, y) {
   const base = {
     x: x,
@@ -108,9 +129,17 @@ function createEnemy(type, x, y) {
   return base;
 }
 
-// NUR 2 Gegner spawnen
-enemies.push(createEnemy("melee", 600, groundY - 40));
-enemies.push(createEnemy("sniper", 700, groundY - 40));
+// 3 Gegner mit 10% Bosschance
+for (let i = 0; i < 3; i++) {
+  const x = 600 + i * -100;
+  const y = groundY - 40;
+
+  if (Math.random() < 0.10) {
+    enemies.push(createBoss(x, y));
+  } else {
+    enemies.push(createEnemy(randomType(), x, y));
+  }
+}
 
 // Gegner schießt in Richtung Spieler
 function enemyShoot(enemy) {
@@ -196,12 +225,15 @@ function update() {
     aliveEnemies++;
 
     if (enemy.type === "melee") enemy.x += enemy.x < player.x ? enemy.speed : -enemy.speed;
-    if (enemy.type === "sniper") {} // bleibt stehen
+    if (enemy.type === "tank") enemy.x -= enemy.speed;
+    if (enemy.type === "flyer") enemy.x += Math.sin(Date.now() / 500) * 2;
 
     if (enemy.x < 0) enemy.x = 0;
     if (enemy.x + enemy.w > canvas.width) enemy.x = canvas.width - enemy.w;
 
-    if (Date.now() - enemy.lastShot > 1200) {
+    const shootDelay = enemy.type === "boss" ? 500 : 1200;
+
+    if (Date.now() - enemy.lastShot > shootDelay) {
       enemyShoot(enemy);
       enemy.lastShot = Date.now();
     }
@@ -264,8 +296,10 @@ function draw() {
     if (enemy.hp <= 0) continue;
 
     ctx.fillStyle =
+      enemy.type === "boss" ? "red" :
+      enemy.type === "tank" ? "brown" :
       enemy.type === "sniper" ? "purple" :
-      enemy.type === "melee" ? "black" :
+      enemy.type === "flyer" ? "cyan" :
       "black";
 
     ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
