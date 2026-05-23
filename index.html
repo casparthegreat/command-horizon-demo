@@ -19,6 +19,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+
 <div id="ui">
     <button onclick="saveLevel()">Speichern</button>
     <button onclick="loadLevel()">Laden</button>
@@ -26,6 +27,9 @@
 </div>
 
 <script>
+// ---------------------------------------------------------
+// CANVAS SETUP
+// ---------------------------------------------------------
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
@@ -39,10 +43,12 @@ window.addEventListener("resize", () => {
 });
 resize();
 
+// ---------------------------------------------------------
+// WELT & BLOCKTYPEN
+// ---------------------------------------------------------
 const tileSize = 40;
 const world = {}; // "x,y" -> blockType
 
-// Blockarten
 const blockTypes = {
     grass: "#00aa00",
     stone: "#777777",
@@ -51,7 +57,9 @@ const blockTypes = {
     snow: "#e0f7ff"
 };
 
-// Biome
+// ---------------------------------------------------------
+// BIOME
+// ---------------------------------------------------------
 const biomes = [
     {
         name: "forest",
@@ -88,13 +96,18 @@ function getBiomeAt(xTile) {
     return biomes[(index + biomes.length) % biomes.length];
 }
 
-// Boden
+// ---------------------------------------------------------
+// BODEN GENERIEREN (FIXED VERSION)
+// ---------------------------------------------------------
 function generateGround() {
-    const groundY = Math.floor(canvas.height / tileSize) - 2;
+    const groundY = Math.floor(canvas.height / tileSize) - 3;
+
     for (let x = 0; x < Math.floor(canvas.width / tileSize); x++) {
         const biome = getBiomeAt(x);
+
         world[`${x},${groundY}`] = biome.ground;
         world[`${x},${groundY + 1}`] = biome.ground;
+        world[`${x},${groundY + 2}`] = biome.ground;
     }
 }
 
@@ -104,7 +117,7 @@ function setBlock(x, y, type) {
 }
 
 function removeBlock(x, y) {
-    const groundY = Math.floor(canvas.height / tileSize) - 2;
+    const groundY = Math.floor(canvas.height / tileSize) - 3;
     if (y >= groundY) return; // Boden geschützt
     delete world[`${x},${y}`];
 }
@@ -118,10 +131,12 @@ function drawWorld() {
     }
 }
 
-// Spieler
+// ---------------------------------------------------------
+// SPIELER
+// ---------------------------------------------------------
 const player = {
     x: 5 * tileSize,
-    y: 5 * tileSize,
+    y: 2 * tileSize,   // FIX: Spieler spawnt sichtbar
     vx: 0,
     vy: 0,
     w: 30,
@@ -131,15 +146,13 @@ const player = {
 };
 
 const keys = {};
-document.addEventListener("keydown", e => {
-    keys[e.key] = true;
-});
-document.addEventListener("keyup", e => {
-    keys[e.key] = false;
-});
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
 
-// 4-Richtungen-Bausystem (Option B)
-let buildDir = "down"; // Standard
+// ---------------------------------------------------------
+// 4-RICHTUNGEN-BAUSYSTEM (OPTION B)
+// ---------------------------------------------------------
+let buildDir = "down";
 
 document.addEventListener("keydown", e => {
     if (e.key === "ArrowUp") buildDir = "up";
@@ -163,54 +176,3 @@ document.addEventListener("keydown", e => {
     if (e.key === "h") setBlock(tx, ty, "wood");
     if (e.key === "r") removeBlock(tx, ty);
 });
-
-// Physik Spieler
-function physics() {
-    player.vy += 0.5;
-
-    if (keys["a"] || keys["A"] || keys["ArrowLeft"]) player.vx = -3;
-    else if (keys["d"] || keys["D"] || keys["ArrowRight"]) player.vx = 3;
-    else player.vx = 0;
-
-    if ((keys["w"] || keys["W"] || keys["ArrowUp"]) && player.onGround) {
-        player.vy = -10;
-        player.onGround = false;
-    }
-
-    player.x += player.vx;
-    player.y += player.vy;
-
-    const footX = Math.floor(player.x / tileSize);
-    const footY = Math.floor((player.y + player.h) / tileSize);
-
-    if (world[`${footX},${footY}`]) {
-        player.y = footY * tileSize - player.h;
-        player.vy = 0;
-        player.onGround = true;
-    } else {
-        player.onGround = false;
-    }
-}
-
-function drawPlayer() {
-    ctx.fillStyle = "yellow";
-    ctx.fillRect(player.x, player.y, player.w, player.h);
-}
-
-// Feinde
-const enemies = [
-    { x: 300, y: 200, vx: 1, vy: 0, w: 30, h: 30, alive: true }
-];
-
-// Tag-Nacht
-let timeOfDay = 0;
-const dayLength = 24000;
-
-function getDarkness() {
-    return Math.sin(timeOfDay * Math.PI);
-}
-
-function drawDayNight() {
-    const darkness = getDarkness();
-    ctx.fillStyle = `rgba(0, 0, 50, ${darkness * 0.6})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height
