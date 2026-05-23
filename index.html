@@ -1,407 +1,406 @@
 <!DOCTYPE html>
-<html lang="de">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Blockkampf</title>
-  <style>
-    body { margin: 0; background: #222; display: flex; justify-content: center; align-items: center; height: 100vh; }
-    canvas { background: #333; border: 2px solid #fff; }
-  </style>
+<meta charset="UTF-8">
+<title>2D Bau-Spiel</title>
+<style>
+    body { margin: 0; overflow: hidden; background: #222; }
+    canvas { background: #66aaff; display: block; }
+    #ui {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+    }
+    #ui button {
+        margin-right: 5px;
+    }
+</style>
 </head>
 <body>
-<canvas id="game" width="800" height="400"></canvas>
+<canvas id="game"></canvas>
+<div id="ui">
+    <button onclick="saveLevel()">Speichern</button>
+    <button onclick="loadLevel()">Laden</button>
+    <button onclick="clearLevel()">Löschen</button>
+</div>
+
 <script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
 
-const gravity = 0.6;
-const groundY = 300;
+const tileSize = 40;
+const world = {}; // key: "x,y" -> blockType
 
-let gameOver = false;
-
-// LEVELSYSTEM
-let level = 1;
-let levelScreen = false;
-let levelScreenTimer = 0;
-
-// COUNTDOWN + FLASH
-let countdown = 3;
-let countdownActive = true;
-let flash = false;
-
-// SPIELER
-const player = {
-  x: 100,
-  y: groundY - 40,
-  w: 40,
-  h: 40,
-  vy: 0,
-  onGround: true,
-  color: 'red',
-  hp: 10   // Start mit 10 Leben
+// Blockarten
+const blockTypes = {
+    grass: "#00aa00",
+    stone: "#777777",
+    wood: "#8b5a2b"
 };
 
-// GEGNER
-const enemies = [];
-const stars = [];
-const enemyStars = [];
-
-// INPUT
-const keys = { left: false, right: false, jump: false, shootLeft: false, shootRight: false, shootUp: false, shootDown: false };
-
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyA') keys.left = true;
-  if (e.code === 'KeyD') keys.right = true;
-  if (e.code === 'Space') keys.jump = true;
-
-  if (e.code === 'KeyA') keys.shootLeft = true;
-  if (e.code === 'KeyD') keys.shootRight = true;
-  if (e.code === 'KeyW') keys.shootUp = true;
-  if (e.code === 'KeyS') keys.shootDown = true;
-
-  if (e.code === 'KeyR' && gameOver) location.reload();
-});
-
-document.addEventListener('keyup', (e) => {
-  if (e.code === 'KeyA') { keys.left = false; keys.shootLeft = false; }
-  if (e.code === 'KeyD') { keys.right = false; keys.shootRight = false; }
-  if (e.code === 'KeyW') keys.shootUp = false;
-  if (e.code === 'KeyS') keys.shootDown = false;
-  if (e.code === 'Space') keys.jump = false;
-});
-
-// COUNTDOWN START
-const countdownInterval = setInterval(() => {
-  countdown--;
-  if (countdown <= 0) {
-    countdownActive = false;
-    flash = true;
-    setTimeout(() => flash = false, 150);
-    clearInterval(countdownInterval);
-
-    spawnLevel();
-  }
-}, 1000);
-
-// KOLLISION
-function rectsCollide(a, b) {
-  return (
-    a.x < b.x + b.w &&
-    a.x + a.w > b.x &&
-    a.y < b.y + b.h &&
-    a.y + a.h > b.y
-  );
+function setBlock(x, y, type) {
+    world[`${x},${y}`] = type;
+    // Quest: Baue 10 Blöcke
+    quests[0].progress++;
 }
 
-let canShoot = true;
-
-function shootStar(vx, vy) {
-  stars.push({
-    x: player.x + player.w / 2,
-    y: player.y + player.h / 2,
-    r: 6,
-    vx: vx,
-    vy: vy,
-    color: 'yellow'
-  });
+function removeBlock(x, y) {
+    delete world[`${x},${y}`];
 }
 
-// GEGNERTYPEN
-const enemyTypes = ["melee", "sniper", "flyer"];
-
-function randomType() {
-  return enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+function drawWorld() {
+    for (const key in world) {
+        const [x, y] = key.split(",").map(Number);
+        ctx.fillStyle = blockTypes[world[key]] || "#00aa00";
+        ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+    }
 }
 
-// BOSS
-function createBoss(x, y) {
-  return {
-    x: x,
-    y: y,
-    w: 80,
-    h: 80,
-    hp: 20 + level * 3,
-    speed: 1 + level * 0.1,
-    lastShot: 0,
-    type: "boss"
-  };
-}
-
-// NORMALER GEGNER
-function createEnemy(type, x, y) {
-  const base = {
-    x: x,
-    y: y,
-    w: 40,
+// Spieler
+const player = {
+    x: 5 * tileSize,
+    y: 5 * tileSize,
+    vx: 0,
+    vy: 0,
+    w: 30,
     h: 40,
-    hp: 3 + level,
-    speed: 2 + level * 0.1,
-    lastShot: 0,
-    type: type
-  };
+    onGround: false,
+    hp: 10
+};
 
-  // LEVEL 1 EXTREM EINFACH
-  if (level === 1) {
-    base.hp = 1;
-    base.speed = 1;
-  }
+const keys = {};
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
 
-  if (type === "melee") base.speed += 1;
-  if (type === "sniper") base.speed -= 1;
-  if (type === "flyer") base.y -= 120;
+// Maus: Blöcke setzen / entfernen
+canvas.addEventListener("mousedown", e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const x = Math.floor(mx / tileSize);
+    const y = Math.floor(my / tileSize);
 
-  return base;
-}
+    if (e.button === 0) {
+        let type = "grass";
+        if (e.shiftKey) type = "stone";
+        if (e.ctrlKey) type = "wood";
+        setBlock(x, y, type);
+    }
+});
+canvas.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const x = Math.floor(mx / tileSize);
+    const y = Math.floor(my / tileSize);
+    removeBlock(x, y);
+});
 
-// LEVEL STARTEN
-function spawnLevel() {
-  enemies.length = 0;
+// Physik Spieler
+function physics() {
+    player.vy += 0.5;
 
-  // Spielerleben zurücksetzen
-  player.hp = 10;
+    if (keys["a"] || keys["ArrowLeft"]) player.vx = -3;
+    else if (keys["d"] || keys["ArrowRight"]) player.vx = 3;
+    else player.vx = 0;
 
-  for (let i = 0; i < 3; i++) {
-    const x = 600 + i * -100;
-    const y = groundY - 40;
+    if ((keys["w"] || keys["ArrowUp"]) && player.onGround) {
+        player.vy = -10;
+        player.onGround = false;
+    }
 
-    if (level > 1 && Math.random() < 0.10) {
-      enemies.push(createBoss(x, y));
+    player.x += player.vx;
+    player.y += player.vy;
+
+    const footX = Math.floor(player.x / tileSize);
+    const footY = Math.floor((player.y + player.h) / tileSize);
+
+    if (world[`${footX},${footY}`]) {
+        player.y = footY * tileSize - player.h;
+        player.vy = 0;
+        player.onGround = true;
     } else {
-      enemies.push(createEnemy(randomType(), x, y));
+        player.onGround = false;
     }
-  }
-
-  levelScreen = true;
-  levelScreenTimer = 1500;
 }
 
-// GEGNER SCHIEßT
-function enemyShoot(enemy) {
-  const dx = (player.x + player.w / 2) - (enemy.x + enemy.w / 2);
-  const dy = (player.y + player.h / 2) - (enemy.y + enemy.h / 2);
-
-  let vx = 0, vy = 0;
-
-  if (Math.abs(dx) > Math.abs(dy)) vx = dx > 0 ? 6 : -6;
-  else vy = dy > 0 ? 6 : -6;
-
-  enemyStars.push({
-    x: enemy.x + enemy.w / 2,
-    y: enemy.y + enemy.h / 2,
-    r: 6,
-    vx: vx,
-    vy: vy,
-    color: 'white'
-  });
-}
-
-// UPDATE
-function update() {
-  if (gameOver) return;
-  if (countdownActive) return;
-
-  if (levelScreen) {
-    levelScreenTimer -= 16;
-    if (levelScreenTimer <= 0) levelScreen = false;
-    return;
-  }
-
-  // SPIELER BEWEGUNG
-  if (keys.left) player.x -= 4;
-  if (keys.right) player.x += 4;
-
-  if (player.x < 0) player.x = 0;
-  if (player.x + player.w > canvas.width) player.x = canvas.width - player.w;
-
-  if (keys.jump && player.onGround) {
-    player.vy = -12;
-    player.onGround = false;
-  }
-
-  player.vy += gravity;
-  player.y += player.vy;
-
-  if (player.y + player.h > groundY) {
-    player.y = groundY - player.h;
-    player.vy = 0;
-    player.onGround = true;
-  }
-
-  // SCHIEßEN
-  if (canShoot) {
-    if (keys.shootLeft)  { shootStar(-8, 0); canShoot = false; }
-    if (keys.shootRight) { shootStar(8, 0);  canShoot = false; }
-    if (keys.shootUp)    { shootStar(0, -8); canShoot = false; }
-    if (keys.shootDown)  { shootStar(0, 8);  canShoot = false; }
-
-    if (!canShoot) setTimeout(() => canShoot = true, 200);
-  }
-
-  // SPIELER-PROJEKTILE
-  for (let i = stars.length - 1; i >= 0; i--) {
-    const s = stars[i];
-    s.x += s.vx;
-    s.y += s.vy;
-
-    let hit = false;
-    for (const enemy of enemies) {
-      if (enemy.hp <= 0) continue;
-      if (rectsCollide({ x: s.x - s.r, y: s.y - s.r, w: s.r*2, h: s.r*2 }, enemy)) {
-        enemy.hp--;
-        hit = true;
-        break;
-      }
-    }
-
-    if (hit) { stars.splice(i, 1); continue; }
-
-    if (s.x < 0 || s.x > canvas.width || s.y < 0 || s.y > canvas.height)
-      stars.splice(i, 1);
-  }
-
-  // GEGNER UPDATE
-  let aliveEnemies = 0;
-
-  for (const enemy of enemies) {
-    if (enemy.hp <= 0) continue;
-    aliveEnemies++;
-
-    if (enemy.type === "melee") enemy.x += enemy.x < player.x ? enemy.speed : -enemy.speed;
-    if (enemy.type === "flyer") enemy.x += Math.sin(Date.now() / 500) * 2;
-
-    if (enemy.x < 0) enemy.x = 0;
-    if (enemy.x + enemy.w > canvas.width) enemy.x = canvas.width - enemy.w;
-
-    let shootDelay = enemy.type === "boss" ? 500 : 1200;
-
-    if (level === 1) shootDelay = 2000;
-
-    if (Date.now() - enemy.lastShot > shootDelay) {
-      enemyShoot(enemy);
-      enemy.lastShot = Date.now();
-    }
-  }
-
-  // LEVEL GESCHAFFT
-  if (aliveEnemies === 0) {
-    level++;
-    spawnLevel();
-  }
-
-  // GEGNER-PROJEKTILE
-  for (let i = enemyStars.length - 1; i >= 0; i--) {
-    const s = enemyStars[i];
-    s.x += s.vx;
-    s.y += s.vy;
-
-    if (rectsCollide({ x: s.x - s.r, y: s.y - s.r, w: s.r*2, h: s.r*2 }, player)) {
-      player.hp--;
-      if (player.hp <= 0) gameOver = true;
-      enemyStars.splice(i, 1);
-      continue;
-    }
-
-    if (s.x < 0 || s.x > canvas.width || s.y < 0 || s.y > canvas.height)
-      enemyStars.splice(i, 1);
-  }
-}
-
-// STERN ZEICHNEN
-function drawStar(x, y, r, color) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.beginPath();
-  for (let i = 0; i < 5; i++) {
-    ctx.lineTo(Math.cos((18 + i * 72) * Math.PI / 180) * r,
-               -Math.sin((18 + i * 72) * Math.PI / 180) * r);
-    ctx.lineTo(Math.cos((54 + i * 72) * Math.PI / 180) * (r / 2),
-               -Math.sin((54 + i * 72) * Math.PI / 180) * (r / 2));
-  }
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.restore();
-}
-
-// ZEICHNEN
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // COUNTDOWN
-  if (countdownActive) {
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = "white";
-    ctx.font = "80px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(countdown > 0 ? countdown : "GO!", canvas.width / 2, canvas.height / 2);
-    return;
-  }
-
-  // FLASH
-  if (flash) {
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-
-  // LEVELSCREEN
-  if (levelScreen) {
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+function drawPlayer() {
     ctx.fillStyle = "yellow";
-    ctx.font = "70px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("LEVEL " + level, canvas.width / 2, canvas.height / 2);
-    return;
-  }
-
-  // HUD
-  ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
-  ctx.fillText("Leben: " + player.hp, 20, 30);
-  ctx.fillText("Level: " + level, 20, 60);
-
-  // BODEN
-  ctx.fillStyle = '#555';
-  ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
-
-  // SPIELER
-  ctx.fillStyle = player.color;
-  ctx.fillRect(player.x, player.y, player.w, player.h);
-
-  // GEGNER
-  for (const enemy of enemies) {
-    if (enemy.hp <= 0) continue;
-
-    ctx.fillStyle =
-      enemy.type === "boss" ? "red" :
-      enemy.type === "sniper" ? "purple" :
-      enemy.type === "flyer" ? "cyan" :
-      "black";
-
-    ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
-  }
-
-  // PROJEKTILE
-  stars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
-  enemyStars.forEach(s => drawStar(s.x, s.y, s.r, s.color));
-
-  // GAME OVER
-  if (gameOver) {
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "white";
-    ctx.font = "60px Arial";
-    ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
-  }
+    ctx.fillRect(player.x, player.y, player.w, player.h);
 }
 
+// Feinde
+const enemies = [
+    { x: 300, y: 200, vx: 1, vy: 0, w: 30, h: 30, alive: true }
+];
+
+// Tag-Nacht
+let timeOfDay = 0;        // 0–1
+const dayLength = 24000;  // 24 Sekunden
+
+function getDarkness() {
+    return Math.sin(timeOfDay * Math.PI); // 0 hell, 1 dunkel
+}
+
+function drawDayNight() {
+    const darkness = getDarkness();
+    ctx.fillStyle = `rgba(0, 0, 50, ${darkness * 0.6})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+// Wetter
+let weather = "clear"; // clear, rain, snow
+let weatherIntensity = 0; // 0–1
+let particles = [];
+
+setInterval(() => {
+    const r = Math.random();
+
+    if (r < 0.6) {
+        weather = "clear";
+        weatherIntensity = 0;
+    } else if (r < 0.85) {
+        weather = "rain";
+        weatherIntensity = Math.random() * 0.7 + 0.3;
+    } else {
+        weather = "snow";
+        weatherIntensity = Math.random() * 0.7 + 0.3;
+    }
+}, 15000);
+
+function spawnWeatherParticles() {
+    if (weather === "clear") return;
+
+    for (let i = 0; i < 5 * weatherIntensity; i++) {
+        particles.push({
+            x: Math.random() * canvas.width,
+            y: -10,
+            vx: weather === "snow" ? (Math.random() - 0.5) * 0.5 : 0,
+            vy: weather === "snow" ? 1 + Math.random() * 1 : 8 + Math.random() * 4,
+            size: weather === "snow" ? 3 : 2
+        });
+    }
+}
+
+function updateWeatherParticles() {
+    particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+    });
+    particles = particles.filter(p => p.y < canvas.height + 20);
+}
+
+function drawWeatherParticles() {
+    if (weather === "rain") ctx.fillStyle = "rgba(150,150,255,0.7)";
+    if (weather === "snow") ctx.fillStyle = "white";
+
+    particles.forEach(p => {
+        ctx.fillRect(p.x, p.y, p.size, p.size * (weather === "rain" ? 4 : 1));
+    });
+}
+
+function drawClouds() {
+    if (weather === "clear") return;
+    const alpha = weatherIntensity * 0.3;
+    ctx.fillStyle = `rgba(200,200,200,${alpha})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+// Wetter beeinflusst Feinde
+function getEnemyModifiers() {
+    let speed = 1;
+    let jump = 1;
+    let push = 0;
+
+    if (weather === "rain") {
+        speed = 1.4 * weatherIntensity;
+        jump = 0.8;
+    }
+
+    if (weather === "snow") {
+        speed = 0.6;
+        jump = 0.9;
+    }
+
+    if (weather === "snow" || weather === "rain") {
+        push = (Math.random() - 0.5) * 0.2 * weatherIntensity;
+    }
+
+    if (getDarkness() > 0.4) {
+        speed *= 1.2;
+        jump *= 1.1;
+    }
+
+    return { speed, jump, push };
+}
+
+function updateEnemies() {
+    const mod = getEnemyModifiers();
+
+    enemies.forEach(e => {
+        if (!e.alive) return;
+
+        e.vy += 0.4;
+        e.x += e.vx * mod.speed;
+        e.y += e.vy;
+
+        e.x += mod.push;
+
+        const footX = Math.floor(e.x / tileSize);
+        const footY = Math.floor((e.y + e.h) / tileSize);
+        if (world[`${footX},${footY}`]) {
+            e.y = footY * tileSize - e.h;
+            e.vy = 0;
+
+            if (Math.random() < 0.01 * mod.jump) {
+                e.vy = -8 * mod.jump;
+            }
+        }
+
+        const frontX = Math.floor((e.x + (e.vx > 0 ? e.w : -1)) / tileSize);
+        const frontY = Math.floor((e.y + e.h / 2) / tileSize);
+        if (world[`${frontX},${frontY}`]) e.vx *= -1;
+
+        // Spieler-Kollision
+        if (player.x < e.x + e.w &&
+            player.x + player.w > e.x &&
+            player.y < e.y + e.h &&
+            player.y + player.h > e.y) {
+
+            if (player.vy > 0) {
+                if (e.alive) {
+                    e.alive = false;
+                    player.vy = -8;
+                    // Quest: Feind besiegt
+                    quests[1].progress++;
+                }
+            } else {
+                player.hp -= 1 * mod.speed;
+            }
+        }
+    });
+}
+
+function drawEnemies() {
+    enemies.forEach(e => {
+        if (!e.alive) return;
+        ctx.fillStyle = "purple";
+        ctx.fillRect(e.x, e.y, e.w, e.h);
+    });
+}
+
+// Quests
+let quests = [
+    { id: 1, text: "Baue 10 Blöcke", progress: 0, goal: 10 },
+    { id: 2, text: "Besiege 1 Feind", progress: 0, goal: 1 }
+];
+
+function drawQuests() {
+    ctx.fillStyle = "white";
+    ctx.font = "16px Arial";
+    let y = 25;
+
+    quests.forEach(q => {
+        const done = q.progress >= q.goal;
+        const status = done ? "✔" : `${q.progress}/${q.goal}`;
+        ctx.fillText(q.text + ": " + status, 20, y);
+        y += 20;
+    });
+
+    ctx.fillText("HP: " + Math.max(0, player.hp), 20, y + 10);
+}
+
+// Speichern / Laden / Autosave
+function saveLevel() {
+    const saveObj = {
+        world: world,
+        playerX: player.x,
+        playerY: player.y,
+        playerHp: player.hp,
+        timeOfDay,
+        weather,
+        weatherIntensity,
+        quests
+    };
+    localStorage.setItem("levelData", JSON.stringify(saveObj));
+    alert("Level gespeichert!");
+}
+
+function loadLevel() {
+    const data = localStorage.getItem("levelData");
+    if (data) {
+        const loaded = JSON.parse(data);
+
+        for (const key in world) delete world[key];
+        Object.assign(world, loaded.world || {});
+
+        if (loaded.playerX !== undefined) player.x = loaded.playerX;
+        if (loaded.playerY !== undefined) player.y = loaded.playerY;
+        if (loaded.playerHp !== undefined) player.hp = loaded.playerHp;
+
+        if (loaded.timeOfDay !== undefined) timeOfDay = loaded.timeOfDay;
+        if (loaded.weather !== undefined) weather = loaded.weather;
+        if (loaded.weatherIntensity !== undefined) weatherIntensity = loaded.weatherIntensity;
+        if (loaded.quests !== undefined) quests = loaded.quests;
+
+        alert("Level geladen!");
+    } else {
+        alert("Kein gespeichertes Level gefunden.");
+    }
+}
+
+function clearLevel() {
+    localStorage.removeItem("levelData");
+    alert("Level gelöscht!");
+}
+
+// Autosave alle 5 Sekunden
+setInterval(() => {
+    const saveObj = {
+        world: world,
+        playerX: player.x,
+        playerY: player.y,
+        playerHp: player.hp,
+        timeOfDay,
+        weather,
+        weatherIntensity,
+        quests
+    };
+    localStorage.setItem("levelData", JSON.stringify(saveObj));
+    console.log("Autosave durchgeführt");
+}, 5000);
+
+// Hauptloop
 function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Zeit
+    timeOfDay += 1 / dayLength;
+    if (timeOfDay > 1) timeOfDay = 0;
+
+    physics();
+    updateEnemies();
+
+    spawnWeatherParticles();
+    updateWeatherParticles();
+
+    drawWorld();
+    drawEnemies();
+    drawPlayer();
+    drawQuests();
+    drawDayNight();
+    drawClouds();
+    drawWeatherParticles();
+
+    requestAnimationFrame(loop);
 }
 
 loop();
