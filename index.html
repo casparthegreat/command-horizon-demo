@@ -176,3 +176,163 @@ document.addEventListener("keydown", e => {
     if (e.key === "h") setBlock(tx, ty, "wood");
     if (e.key === "r") removeBlock(tx, ty);
 });
+<!-- ---------------------------------------------------------
+     TEIL 2 – TAG/NACHT, WETTER, FEINDE, QUESTS, SAVE, LOOP
+---------------------------------------------------------- -->
+
+<script>
+// ---------------------------------------------------------
+// TAG / NACHT (HELLERE VERSION)
+// ---------------------------------------------------------
+let timeOfDay = 0.1;   // Start bei Morgen, nicht stockdunkel
+const dayLength = 24000;
+
+function getDarkness() {
+    return Math.sin(timeOfDay * Math.PI);
+}
+
+function drawDayNight() {
+    const darkness = getDarkness();
+    ctx.fillStyle = `rgba(0, 0, 50, ${darkness * 0.4})`; // Heller gemacht
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+// ---------------------------------------------------------
+// WETTER
+// ---------------------------------------------------------
+let weather = "clear";
+let weatherIntensity = 0;
+let particles = [];
+
+setInterval(() => {
+    const playerBiome = getBiomeAt(Math.floor(player.x / tileSize));
+    const r = Math.random();
+
+    if (r < playerBiome.weatherChance.rain) {
+        weather = "rain";
+        weatherIntensity = Math.random() * 0.7 + 0.3;
+    } else if (r < playerBiome.weatherChance.rain + playerBiome.weatherChance.snow) {
+        weather = "snow";
+        weatherIntensity = Math.random() * 0.7 + 0.3;
+    } else {
+        weather = "clear";
+        weatherIntensity = 0;
+    }
+}, 15000);
+
+function spawnWeatherParticles() {
+    if (weather === "clear") return;
+
+    for (let i = 0; i < 5 * weatherIntensity; i++) {
+        particles.push({
+            x: Math.random() * canvas.width,
+            y: -10,
+            vx: weather === "snow" ? (Math.random() - 0.5) * 0.5 : 0,
+            vy: weather === "snow" ? 1 + Math.random() : 8 + Math.random() * 4,
+            size: weather === "snow" ? 3 : 2
+        });
+    }
+}
+
+function updateWeatherParticles() {
+    particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+    });
+    particles = particles.filter(p => p.y < canvas.height + 20);
+}
+
+function drawWeatherParticles() {
+    if (weather === "rain") ctx.fillStyle = "rgba(150,150,255,0.7)";
+    if (weather === "snow") ctx.fillStyle = "white";
+
+    particles.forEach(p => {
+        ctx.fillRect(p.x, p.y, p.size, p.size * (weather === "rain" ? 4 : 1));
+    });
+}
+
+function drawClouds() {
+<!-- ---------------------------------------------------------
+     TEIL 3 – PHYSIK, SPIELER, LOOP-START, ABSCHLUSS
+---------------------------------------------------------- -->
+
+<script>
+// ---------------------------------------------------------
+// SPIELER-PHYSIK (FIXED VERSION)
+// ---------------------------------------------------------
+function physics() {
+    player.vy += 0.5; // Schwerkraft
+
+    // Bewegung
+    if (keys["a"] || keys["A"]) player.vx = -3;
+    else if (keys["d"] || keys["D"]) player.vx = 3;
+    else player.vx = 0;
+
+    // Springen
+    if ((keys["w"] || keys["W"]) && player.onGround) {
+        player.vy = -10;
+        player.onGround = false;
+    }
+
+    // Position aktualisieren
+    player.x += player.vx;
+    player.y += player.vy;
+
+    // Boden-Kollision
+    const footX = Math.floor(player.x / tileSize);
+    const footY = Math.floor((player.y + player.h) / tileSize);
+
+    if (world[`${footX},${footY}`]) {
+        player.y = footY * tileSize - player.h;
+        player.vy = 0;
+        player.onGround = true;
+    } else {
+        player.onGround = false;
+    }
+}
+
+// ---------------------------------------------------------
+// SPIELER ZEICHNEN
+// ---------------------------------------------------------
+function drawPlayer() {
+    ctx.fillStyle = "yellow";
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+}
+
+// ---------------------------------------------------------
+// GAME LOOP (START)
+// ---------------------------------------------------------
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Zeit
+    timeOfDay += 1 / dayLength;
+    if (timeOfDay > 1) timeOfDay = 0;
+
+    // Updates
+    physics();
+    updateEnemies();
+    spawnWeatherParticles();
+    updateWeatherParticles();
+
+    // Zeichnen
+    drawWorld();
+    drawEnemies();
+    drawPlayer();
+    drawQuests();
+    drawDayNight();
+    drawClouds();
+    drawWeatherParticles();
+
+    requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------
+// SPIEL STARTEN
+// ---------------------------------------------------------
+generateGround();
+loop();
+</script>
+
+</body>
+</html>
